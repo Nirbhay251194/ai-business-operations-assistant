@@ -8,6 +8,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
 import streamlit as st
+from agents.chat_agent import ChatAgent
 
 
 
@@ -217,6 +218,29 @@ def main() -> None:
         st.subheader("Recommendations")
         for recommendation in recommendations:
             st.write(f"- {recommendation}")
+            
+    st.divider()
+
+    st.header("Ask Your Data")
+
+    question = st.text_input(
+     "Ask a question about your business data"
+)
+
+    if question:
+
+        dataframe_text = df.to_string()
+
+        chat_agent = ChatAgent()
+
+        with st.spinner("Analyzing data..."):
+
+            answer = chat_agent.ask(
+            dataframe_text=dataframe_text,
+            question=question,
+            )
+
+        st.markdown(answer)
 
 
 if __name__ == "__main__":
