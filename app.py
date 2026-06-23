@@ -2,12 +2,16 @@ import io
 
 import pandas as pd
 import plotly.express as px
+
 from prometheus_client import metrics
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
 import streamlit as st
 
+
+
+from agents.executive_summary_agent import ExecutiveSummaryAgent
 from agents.analysis_agent import AnalysisAgent
 from agents.data_agent import DataAgent
 from agents.llm_agent import LLMAgent
@@ -128,6 +132,7 @@ def main() -> None:
         except Exception as error:
             st.error(f"Failed to read CSV: {error}")
             return
+    
 
     st.subheader("Data Preview")
     st.dataframe(df.head())
@@ -135,17 +140,30 @@ def main() -> None:
     try:
         data_agent = DataAgent(df)
         metrics = data_agent.analyze()
+
         analysis_agent = AnalysisAgent(df)
         insights = analysis_agent.analyze()
+
         recommendation_agent = LLMAgent()
         recommendations = recommendation_agent.generate_recommendations(insights)
+
+        summary_agent = ExecutiveSummaryAgent()
+        summary = summary_agent.generate_summary(
+        metrics=metrics,
+        insights=insights,
+)
     except Exception as error:
         st.error(f"Failed to compute metrics: {error}")
         return
 
-    summary = generate_executive_summary(metrics, insights, recommendations)
+    summary_agent = ExecutiveSummaryAgent()
+
+    summary = summary_agent.generate_summary(
+    metrics=metrics,
+    insights=insights,
+)
     st.subheader("Executive Summary")
-    st.info(summary)
+    st.write(summary)
 
     report_pdf = generate_report(metrics, insights, recommendations, summary)
     st.download_button(
@@ -158,9 +176,17 @@ def main() -> None:
     st.subheader("Full Report")
 
     st.subheader("KPI Metrics")
-    st.metric("Total Leads", int(metrics["total_leads"]))
-    st.metric("Total Admissions", int(metrics["total_admissions"]))
-    st.metric("Conversion Rate", f"{metrics['conversion_rate']:.2f}%")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+     st.metric("Total Leads", f"{int(metrics['total_leads']):,}")
+
+    with col2:
+     st.metric("Total Admissions", f"{int(metrics['total_admissions']):,}")
+
+    with col3:
+        st.metric("Conversion Rate", f"{metrics['conversion_rate']:.2f}%")
 
 
     if "Leads" in df.columns and "Admissions" in df.columns:
