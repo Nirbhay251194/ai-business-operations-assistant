@@ -241,3 +241,17 @@ These skills align with:
 # Personal Learning
 
 This project helped me understand how to move from business operations and sales strategy into technical AI-focused roles by building practical solutions instead of only studying theory.
+
+Issue:
+LLMAgent failed with:
+'Client' object has no attribute 'responses'
+
+Root Cause:
+The code was generated for a different version of the Google GenAI SDK.
+
+Solution:
+Updated the implementation to use:
+client.models.generate_content()
+
+Learning:
+Always verify generated code against the installed SDK version and test integrations incrementally.

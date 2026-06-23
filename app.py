@@ -1,11 +1,16 @@
+import io
+
 import pandas as pd
 import plotly.express as px
 from prometheus_client import metrics
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
 import streamlit as st
 
 from agents.analysis_agent import AnalysisAgent
 from agents.data_agent import DataAgent
-from agents.recommendation_agent import RecommendationAgent
+from agents.llm_agent import LLMAgent
 
 
 def generate_executive_summary(
@@ -30,32 +35,74 @@ def generate_executive_summary(
 
 def generate_report(
     metrics: dict, insights: list[str], recommendations: list[str], summary: str
-) -> str:
-    lines = [
-        "AI BUSINESS OPERATIONS ASSISTANT REPORT",
-        "",
-        "Section 1: KPI Metrics",
-        f"- Total Leads: {int(metrics['total_leads'])}",
-        f"- Total Admissions: {int(metrics['total_admissions'])}",
-        f"- Conversion Rate: {metrics['conversion_rate']:.2%}",
-        "",
-        "Section 2: Analysis Insights",
-    ]
+) -> bytes:
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    story = []
+    styles = getSampleStyleSheet()
 
+    title_style = ParagraphStyle(
+        "CustomTitle",
+        parent=styles["Heading1"],
+        fontSize=24,
+        textColor="#1f77b4",
+        spaceAfter=12,
+    )
+
+    heading_style = ParagraphStyle(
+        "CustomHeading",
+        parent=styles["Heading2"],
+        fontSize=14,
+        textColor="#1f77b4",
+        spaceAfter=6,
+    )
+
+    story.append(Paragraph("AI BUSINESS OPERATIONS ASSISTANT REPORT", title_style))
+    story.append(Spacer(1, 12))
+
+    story.append(Paragraph("Section 1: KPI Metrics", heading_style))
+    story.append(
+        Paragraph(
+            f"<b>Total Leads:</b> {int(metrics['total_leads']):,}",
+            styles["Normal"],
+        )
+    )
+    story.append(
+        Paragraph(
+            f"<b>Total Admissions:</b> {int(metrics['total_admissions']):,}",
+            styles["Normal"],
+        )
+    )
+    story.append(
+        Paragraph(
+            f"<b>Conversion Rate:</b> {metrics['conversion_rate']:.2%}",
+            styles["Normal"],
+        )
+    )
+    story.append(Spacer(1, 12))
+
+    story.append(Paragraph("Section 2: Analysis Insights", heading_style))
     if insights:
-        lines.extend(f"- {insight}" for insight in insights)
+        for insight in insights:
+            story.append(Paragraph(f"• {insight}", styles["Normal"]))
     else:
-        lines.append("- No insights available.")
+        story.append(Paragraph("No insights available.", styles["Normal"]))
+    story.append(Spacer(1, 12))
 
-    lines.extend(["", "Section 3: Recommendations"])
+    story.append(Paragraph("Section 3: Recommendations", heading_style))
     if recommendations:
-        lines.extend(f"- {recommendation}" for recommendation in recommendations)
+        for recommendation in recommendations:
+            story.append(Paragraph(f"• {recommendation}", styles["Normal"]))
     else:
-        lines.append("- No recommendations available.")
+        story.append(Paragraph("No recommendations available.", styles["Normal"]))
+    story.append(Spacer(1, 12))
 
-    lines.extend(["", "Section 4: Executive Summary", summary])
+    story.append(Paragraph("Section 4: Executive Summary", heading_style))
+    story.append(Paragraph(summary, styles["Normal"]))
 
-    return "\n".join(lines)
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.getvalue()
 
 
 def main() -> None:
@@ -90,8 +137,8 @@ def main() -> None:
         metrics = data_agent.analyze()
         analysis_agent = AnalysisAgent(df)
         insights = analysis_agent.analyze()
-        recommendation_agent = RecommendationAgent(insights)
-        recommendations = recommendation_agent.generate_recommendations()
+        recommendation_agent = LLMAgent()
+        recommendations = recommendation_agent.generate_recommendations(insights)
     except Exception as error:
         st.error(f"Failed to compute metrics: {error}")
         return
@@ -100,12 +147,12 @@ def main() -> None:
     st.subheader("Executive Summary")
     st.info(summary)
 
-    report_text = generate_report(metrics, insights, recommendations, summary)
+    report_pdf = generate_report(metrics, insights, recommendations, summary)
     st.download_button(
         label="📥 Download Report",
-        data=report_text,
-        file_name="business_operations_report.txt",
-        mime="text/plain",
+        data=report_pdf,
+        file_name="business_operations_report.pdf",
+        mime="application/pdf",
     )
 
     st.subheader("Full Report")
