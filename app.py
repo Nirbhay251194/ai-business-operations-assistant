@@ -1,5 +1,6 @@
 import io
 
+from googleapiclient import schema
 import pandas as pd
 import plotly.express as px
 
@@ -9,6 +10,8 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
 import streamlit as st
 from agents.chat_agent import ChatAgent
+from agents.schema_agent import SchemaAgent
+from agents.health_score_agent import HealthScoreAgent
 
 
 
@@ -117,7 +120,7 @@ def main() -> None:
 
     if use_sample_data:
         try:
-            df = pd.read_csv("data/sample_data.csv")
+            df = pd.read_csv("data/test1.csv")
             st.info("Loaded sample data from `data/sample_data.csv`")
         except Exception as error:
             st.error(f"Failed to load sample data: {error}")
@@ -137,12 +140,45 @@ def main() -> None:
 
     st.subheader("Data Preview")
     st.dataframe(df.head())
+    
 
     try:
-        data_agent = DataAgent(df)
-        metrics = data_agent.analyze()
+        schema_agent = SchemaAgent(df)
+        schema = schema_agent.detect_schema()
+        
+        st.subheader("Detected Schema")
+        st.write(schema)
 
-        analysis_agent = AnalysisAgent(df)
+        lead_column = schema["lead_column"]
+        admission_column = schema["admission_column"]
+
+        if not lead_column or not admission_column:
+            st.error(
+                "Could not automatically detect lead/admission columns."
+            
+            )
+            return
+
+        data_agent = DataAgent(
+            df,
+            lead_column=lead_column,
+            admission_column=admission_column,
+        )
+
+        metrics = data_agent.analyze()
+        health_agent = HealthScoreAgent()
+
+        business_score = health_agent.calculate(
+            total_leads=metrics["total_leads"],
+            total_admissions=metrics["total_admissions"],
+            conversion_rate=metrics["conversion_rate"],
+        )
+
+        analysis_agent = AnalysisAgent(
+            df,
+            lead_column=lead_column,
+            admission_column=admission_column,
+        )
         insights = analysis_agent.analyze()
 
         recommendation_agent = LLMAgent()
@@ -165,7 +201,22 @@ def main() -> None:
 )
     st.subheader("Executive Summary")
     st.write(summary)
+    
+    st.subheader("Business Health Score")
 
+    st.metric(
+    "Overall Health Score",
+    f"{business_score}/100"
+    )
+    st.progress(business_score / 100)
+    if business_score >= 80:
+        st.success("Excellent Business Performance")
+    elif business_score >= 60:
+        st.warning("Average Business Performance")
+    else:
+        st.error("Business Needs Attention")
+        
+        
     report_pdf = generate_report(metrics, insights, recommendations, summary)
     st.download_button(
         label="📥 Download Report",
@@ -190,24 +241,27 @@ def main() -> None:
         st.metric("Conversion Rate", f"{metrics['conversion_rate']:.2f}%")
 
 
-    if "Leads" in df.columns and "Admissions" in df.columns:
+    if lead_column and admission_column:
+
         st.subheader("Trends")
 
-        leads_chart = px.line(
-            df,
-            y="Leads",
-            title="Leads Trend",
-            markers=True,
-        )
-        st.plotly_chart(leads_chart, use_container_width=True)
+    leads_chart = px.line(
+        df,
+        x=schema["time_column"],
+        y=lead_column,
+        title=f"{lead_column} Trend",
+        markers=True,
+    )
+    st.plotly_chart(leads_chart, use_container_width=True)
 
-        admissions_chart = px.line(
-            df,
-            y="Admissions",
-            title="Admissions Trend",
-            markers=True,
-        )
-        st.plotly_chart(admissions_chart, use_container_width=True)
+    admissions_chart = px.line(
+        df,
+        x=schema["time_column"],
+        y=admission_column,
+        title=f"{admission_column} Trend",
+        markers=True,
+    )
+    st.plotly_chart(admissions_chart, use_container_width=True)
 
     if insights:
         st.subheader("Analysis Insights")
